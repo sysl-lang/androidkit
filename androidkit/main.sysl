@@ -144,13 +144,15 @@ sdl_main(argc: i32, argv: **u8) -> i32
 
         renderer.clear_to(rgb(18, 18, 22))
 
-        // **Text with nothing installed.** `debug_text` draws in a fixed 8x8 bitmap font carried
-        // inside SDL itself, so this program needs no font file, no `sdl3-ttf`, and nothing shipped
-        // beside the binary. It is a debugging font by SDL's own description — one size, one face,
-        // ASCII — and it is exactly right for the first thing a program says. Reach for `sdl3-ttf`
-        // when a real interface needs real type.
+        // **Centred against the bars, not against the screen.** The measurements come from the
+        // texture rather than from the string, which is what a real outline face makes necessary —
+        // glyphs are not one width, so there is nothing to multiply. `label.size()` was asked once,
+        // above, because the answer only changes when the message does.
         //
-        // Centred by arithmetic, since eight pixels a character is a width that needs no measuring.
+        // For a fixed 8x8 bitmap font needing no font file at all, `renderer.debug_text` draws in one
+        // SDL carries inside itself. It is a debugging face by SDL's own description — one size, one
+        // face, ASCII — and enough for a frame counter, which is why this program uses `sdl3-ttf`
+        // instead.
         renderer.copy_to(label, FRect((left + right - tw) * 0.5, (top + bottom - th) * 0.5, tw, th))
         renderer.present()
 
