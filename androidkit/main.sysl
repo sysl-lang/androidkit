@@ -1,85 +1,244 @@
-// androidkit — sysl on Android, drawn by SDL3.
+// androidkit — sysl on Android: Box2D physics, drawn by SDL3, thrown by a finger.
 //
-// **The whole program is one function, and the interesting thing about it is its name.** Android has
-// no `main`. `SDLActivity` loads `libmain.so` and looks up the symbol `SDL_main` in it, so what an
-// Android program needs is not an entry point that runs first but one the Java half can find — and
-// `@export` publishes exactly that (`15 §12`).
+// **The whole program is one exported function, and the interesting thing about it is its name.**
+// Android has no `main`. `SDLActivity` loads `libmain.so` and looks up the symbol `SDL_main` in it,
+// so what an Android program needs is not an entry point that runs first but one the Java half can
+// find — and `@export` publishes exactly that (`15 §12`).
 //
-// **That is why there is no C in this repository at all.** Every other SDL project carries a shim,
+// **So there is no C in this repository at all.** Every other SDL project carries a shim,
 // `int SDL_main(int argc, char **argv) { return main(argc, argv); }`, because a C program's entry
-// point is called `main` and SDL wants a different name. sysl can define the symbol directly, so the
-// shim has nothing left to do.
+// point is called `main` and SDL wants a different name. sysl can define the symbol directly.
 //
-// Everything below is an ordinary SDL program — create a window, drain the events, draw, present —
-// and none of it knows it is on a phone. The same source runs on a desktop with `sysl run`.
+// **Neither package needed a line changed to run here**, which is the claim this demo exists to
+// make. `sh.sysl.box2d` is a vendored Box2D v3 that the NDK compiles like any other C; taps arrive
+// as mouse events, because SDL synthesises them from touch; and `15 §8`'s rule that a `@link`
+// directive names a library rather than a path is what keeps the SDL binding identical on a phone
+// and on a desktop.
 
+import sh.sysl.box2d.*
+import sh.sysl.box2d.math.{Vec2, Transform, AABB, zero, rot}
+import sh.sysl.box2d.c
 import sh.sysl.sdl3.*
-import sh.sysl.sdl3.c.{INIT_VIDEO, SCANCODE_ESCAPE, WINDOW_RESIZABLE}
+import sh.sysl.sdl3.c.{INIT_VIDEO, SCANCODE_ESCAPE, WINDOW_RESIZABLE, Vertex}
+import sysl.buf.{Buf, buf}
+import sysl.rand.rng
+import sysl.math.Float
 import bars
 
 // **What the window is asked for, and not what it gets.** Android answers a size request with the
-// screen, so these two numbers matter only on a desktop; the size the program actually draws to is
-// read back inside the loop. A program that skipped that would draw in one corner of a phone.
-//
-// **They also decide which way up an Android app starts, which is not obvious.** SDL picks the
-// activity's orientation from the shape of the window it is asked for — wider than tall means
-// landscape — so a desktop-shaped request turns a phone sideways. The hint below is what stops that
-// being decided by two numbers meant for a desktop.
+// screen, so these two matter only on a desktop. They also decide which way up an Android app
+// starts: SDL reads the requested shape, and wider-than-tall turns a phone sideways.
 const WANTED_W: i32 = 800
 const WANTED_H: i32 = 600
 
-// One square, bouncing, in pixels per second — a speed in seconds rather than in frames, which is
-// what makes it the same on a 60 Hz phone and a 120 Hz one.
-const SIDE: f32 = 140.0
-const SPEED: f32 = 320.0
+// How wide the visible region is, in Box2D metres. Everything else follows from it: the scale is
+// this against the pixels available, so the same world fills a phone and a tablet.
+const VIEW_METRES: f32 = 9.0
+
+// How many things are in the air at the start, and the ceiling a finger can add up to.
+const AT_START: int = 18
+const MOST: int = 90
+
+// How big the picture is, in texture pixels. It is generated rather than loaded, which is the same
+// choice `sdl3-demo` makes and for the same reason: a demo that shipped an image would be showing
+// that git still holds a file.
+const FACE: i32 = 64
+
+// Eight colours, given to a body by the order it comes back from the query, so the screen stays
+// varied without anything having to remember which is whose.
+//
+// **A function rather than a `const` array**, because `rgb` is a call and `const` takes a constant
+// expression. A module `val` would have worked and is deliberately not used: computed module storage
+// reached from an `@export`ed function is what card `0167` is about, and this file has two exports.
+palette(i: int) -> Color =
+    i % 8 match
+        0 -> rgb(120, 200, 255)
+        1 -> rgb(255, 176, 102)
+        2 -> rgb(150, 226, 160)
+        3 -> rgb(240, 140, 170)
+        4 -> rgb(200, 170, 255)
+        5 -> rgb(255, 220, 120)
+        6 -> rgb(130, 220, 220)
+        _ -> rgb(240, 130, 130)
 
 // ## The bars, which SDL will not tell you about on their own
 //
 // **`window.safe_area()` is not the rectangle a *drawing* wants, and the difference is not small.**
 // SDL builds Android's safe area out of five inset types at once — `systemBars`, `systemGestures`,
 // `mandatorySystemGestures`, `tappableElement` and `displayCutout` — so it answers *where can a
-// button go*, which is what its own documentation says: content outside it "should not contain
-// visually important or interactable content".
+// button go*, which is what its own documentation says.
 //
-// Measured on a gesture-navigation phone, that is **78 pixels off each side** for the back-gesture
-// strips, and a bottom inset reaching **21 pixels above** the navigation bar it sits under. For a
-// picture all of that is too conservative: nothing here is touchable, and the sides are perfectly
-// visible.
+// Measured on a gesture-navigation phone that is **78 pixels off each side** for the back-gesture
+// strips and a bottom inset reaching **21 pixels above** the navigation bar. For a picture all of it
+// is too conservative: nothing here is touchable and the sides are perfectly visible.
 //
-// What a drawing wants is the window minus the **system bars** and nothing else — and SDL exposes
-// only the combined rectangle, so the Java half reads the insets and hands them over through the
-// JNI entry point below. `bars` holds them; see that file for why they are not in this one.
+// What a drawing wants is the window minus the **system bars** and nothing else, and SDL exposes
+// only the combined rectangle — so the Java half reads the insets and hands them over here. `bars`
+// holds them; that file says why they are not in this one.
 //
-// **A JNI entry point, defined in sysl.** The name is not a style: JNI resolves an `external fun` by
-// mangling its package and class into `Java_<package>_<Class>_<method>`, so this string is what
-// `MainActivity.nativeSetSystemBars` binds to. A rename on either side still links — JNI resolves at
-// run time — and fails at the first call.
-//
-// The first two parameters are JNI's own, the environment and the instance, and neither is used, so
-// both are taken as opaque pointers rather than described. (`self` is a reserved word, hence
-// `instance`.)
+// **A JNI entry point, defined in sysl.** JNI resolves an `external fun` by mangling its package and
+// class into `Java_<package>_<Class>_<method>`, so this string is what `MainActivity`'s
+// `nativeSetSystemBars` binds to. A rename on either side still links — JNI resolves at run time —
+// and fails at the first call. (`self` is a reserved word, hence `instance`.)
 @export("Java_sh_sysl_androidkit_MainActivity_nativeSetSystemBars")
 set_system_bars(env: *u8, instance: *u8, l: i32, t: i32, r: i32, b: i32) = bars.set(l, t, r, b)
+
+// ## Pixels and metres
+//
+// Box2D works in metres with y pointing up; SDL draws in pixels with y pointing down. One struct
+// holds the conversion, so no drawing code below does the arithmetic twice — and because the region
+// it maps into moves when the phone turns.
+struct View
+    // The visible rectangle in pixels: the window minus the two system bars.
+    left: f32
+    top: f32
+    right: f32
+    bottom: f32
+
+    // Pixels per metre, and where world x = 0 sits on the screen.
+    scale: f32
+    centre: f32
+
+    to_screen_x(self, x: f32) -> f32 = self.centre + x * self.scale
+    to_screen_y(self, y: f32) -> f32 = self.bottom - y * self.scale
+
+    to_world(self, px: f32, py: f32) -> Vec2 =
+        Vec2((px - self.centre) / self.scale, (self.bottom - py) / self.scale)
+
+    half_width(self) -> f32 = (self.right - self.left) * 0.5 / self.scale
+    tall(self) -> f32 = (self.bottom - self.top) / self.scale
+end View
+
+view_of(pw: i32, ph: i32) -> View
+    val (bl, bt, br, bb) = bars.get()
+    val left = f32(bl)
+    val top = f32(bt)
+    val right = f32(pw - br)
+    val bottom = f32(ph - bb)
+    val scale = (right - left) / VIEW_METRES
+
+    View(left, top, right, bottom, scale, (left + right) * 0.5)
+end view_of
+
+// ## The box everything is loose inside
+//
+// **Four walls and no gravity**, which is the whole of why this looks the way it does. A floor alone
+// would make a pile; a closed box with `restitution = 1.0` and no friction on either side makes
+// something that never settles, because nothing takes energy out of it.
+//
+// It is one static body carrying four shapes, which is how a compound object is built: a body is a
+// position and a velocity, and geometry is bolted on separately.
+build_walls(w: &World, v: View) -> Body
+    val g = w.body(body_def())
+    val half = v.half_width()
+    val tall = v.tall()
+    val bouncy = shape_def(friction = 0.0, restitution = 1.0)
+
+    g.polygon(bouncy, make_offset_box(half + 1.0, 0.5, Vec2(0.0, -0.5)))
+    g.polygon(bouncy, make_offset_box(half + 1.0, 0.5, Vec2(0.0, tall + 0.5)))
+    g.polygon(bouncy, make_offset_box(0.5, tall + 1.0, Vec2(-half - 0.5, tall * 0.5)))
+    g.polygon(bouncy, make_offset_box(0.5, tall + 1.0, Vec2(half + 0.5, tall * 0.5)))
+
+    g
+end build_walls
+
+// One thing, thrown in a random direction and spinning.
+//
+// **`enable_sleep = false` is load bearing.** Box2D puts a body that has nearly stopped to sleep, and
+// a sleeping body stops being integrated — which is exactly right for a pile and exactly wrong here,
+// where anything slow enough to doze would freeze in mid-air.
+toss(w: &World, at: Vec2, seed: *u64)
+    var r = rng(seed[0], 1u64)
+
+    seed[0] = seed[0] * 6364136223846793005u64 + 1442695040888963407u64
+
+    val angle = f32(r.unit()) * 6.283
+    val speed = 3.0 + f32(r.unit()) * 4.0
+    val b = w.body(body_def(
+        kind = BodyKind.Dynamic,
+        position = at,
+        rotation = rot(f32(r.unit()) * 6.283),
+        linear_velocity = Vec2(angle.cos() * speed, angle.sin() * speed),
+        angular_velocity = (f32(r.unit()) - 0.5) * 14.0,
+        enable_sleep = false))
+
+    // No friction and a perfect bounce, on both sides of every contact — so a collision changes
+    // where something is going and never how fast, and the spin it was given is the spin it keeps.
+    val def = shape_def(density = 1.0, friction = 0.0, restitution = 1.0)
+    val pick = r.below(3u64)
+
+    if pick == 0u64
+        b.circle(def, circle(zero(), 0.22 + f32(r.unit()) * 0.20))
+    elif pick == 1u64
+        b.polygon(def, make_box(0.22 + f32(r.unit()) * 0.22, 0.22 + f32(r.unit()) * 0.22))
+    else
+        // A triangle through the hull — the path that answers `None` for points that are not a
+        // polygon, which is why it is asked rather than assumed.
+        val side = 0.34 + f32(r.unit()) * 0.26
+        val tri = make_polygon([Vec2(-side, -side * 0.6), Vec2(side, -side * 0.6), Vec2(0.0, side)])
+
+        if tri.is_some() then b.polygon(def, tri.unwrap())
+end toss
+
+// ## Drawing
+//
+// A polygon is drawn as a **triangle fan** from its first vertex, which is exact for any convex
+// polygon — and Box2D's are convex by construction, since `make_polygon` runs its points through a
+// hull. `draw_geometry` is the one call that puts arbitrary triangles on an SDL renderer.
+draw_polygon(ren: &Renderer, v: View, xf: Transform, p: c.Polygon, col: Color)
+    var verts: Buf[Vertex] = buf()
+    var idx: Buf[i32] = buf()
+    val count = usize(p.count)
+
+    for i in 0..<count
+        val at = xf.apply(p.vertices[i])
+
+        verts.push(vertex_at(v.to_screen_x(at.x), v.to_screen_y(at.y), col))
+
+    for i in 1..<count - 1
+        idx.push(0)
+        idx.push(i32(i))
+        idx.push(i32(i + 1))
+
+    ren.draw_geometry(verts.view(), idx.view())
+end draw_polygon
+
+draw_shape(ren: &Renderer, v: View, s: Shape, col: Color)
+    val body = s.body()
+    val xf = body.transform()
+
+    if s.kind() == ShapeKind.Circle
+        val c0 = s.as_circle()
+        val at = xf.apply(c0.center)
+
+        ren.fill_circle(v.to_screen_x(at.x), v.to_screen_y(at.y), c0.radius * v.scale, col)
+
+        // A spoke, because a filled disc gives no sign that it is rolling. This is the one place the
+        // rotation is drawn rather than implied — and with everything spinning it is the difference
+        // between a disc and a ball.
+        val spoke = xf.apply(c0.center + body.rotation().rotate(Vec2(c0.radius, 0.0)))
+
+        ren.set_draw_color(rgb(18, 18, 22))
+        ren.draw_line(v.to_screen_x(at.x), v.to_screen_y(at.y),
+                      v.to_screen_x(spoke.x), v.to_screen_y(spoke.y))
+    elif s.kind() == ShapeKind.Polygon
+        draw_polygon(ren, v, xf, s.as_polygon(), col)
+end draw_shape
 
 @export("SDL_main")
 sdl_main(argc: i32, argv: **u8) -> i32
     // **Set before `init`, because a hint is read when the thing it configures is created** — and on
     // Android the activity's orientation is decided during startup.
     //
-    // **This hint alone is not enough, and the reason is worth knowing.** `SDLActivity`'s
-    // `setOrientationBis` only promotes "both allowed" to *follow the device* when the window is
-    // **resizable**; for a fixed window it still chooses from the requested width and height, so
-    // 800x600 comes up landscape with every orientation named. That is why `WINDOW_RESIZABLE` is
-    // below and not decoration: the two together are what make the activity `FULL_USER`. Read out of
-    // `SDLActivity.java` after this demo came up sideways on a portrait phone twice.
+    // **This hint alone is not enough.** `SDLActivity.setOrientationBis` only promotes "both
+    // allowed" to *follow the device* when the window is **resizable**; for a fixed window it still
+    // chooses from the requested width and height, so 800x600 comes up landscape with every
+    // orientation named. The two together are what make the activity `FULL_USER`.
     set_hint("SDL_ORIENTATIONS", "Portrait PortraitUpsideDown LandscapeLeft LandscapeRight")
 
     if !init(INIT_VIDEO)
         return 1
 
-    // **`WINDOW_RESIZABLE` is what lets the device decide which way up this is** — see the hint
-    // above. It is also honest about what the program does: the loop reads the drawable size every
-    // frame, so a window that changes shape underneath it is a case that is already handled.
     val window = create_window("androidkit", WANTED_W, WANTED_H, WINDOW_RESIZABLE).expect("a window")
     val renderer = window.create_renderer().expect("a renderer")
 
@@ -88,80 +247,82 @@ sdl_main(argc: i32, argv: **u8) -> i32
     // fan.
     renderer.set_vsync(true)
 
-    // Started at the window's origin and corrected into the safe area by the first frame's bounce
-    // check, which is one line cheaper than asking for the rectangle twice.
-    var x: f32 = 0.0
-    var y: f32 = 0.0
-    var dx = SPEED
-    var dy = SPEED
+    // **No gravity.** Everything is thrown once and then only ever changes direction.
+    var w = world(gravity = zero())
+    var view = view_of(WANTED_W, WANTED_H)
+    var walls = w.body(body_def())
+    var built = false
+    var seed = 20260820u64
+    var count = 0
     var last = ticks()
     var running = true
 
     while running
-        // **The visible region between the bars, recomputed every frame.**
-        //
-        // From API 35 an Android app draws edge to edge whether it asks to or not, so the window runs
-        // *under* the status bar at the top and the navigation bar at the bottom. Bouncing against
-        // the window's own size sends the square behind both — correctly drawn and invisible.
-        //
-        // Recomputed rather than cached because the insets change: turning the phone moves them, and
-        // so does anything that shows or hides a bar.
-        //
-        // **The third answer is `window.set_fullscreen(true)`**, which hides the bars and hands the
-        // program the glass. That is what a game wants, and it makes every rectangle here the whole
-        // window — so nothing below would change. This demo keeps the bars so the arithmetic is doing
-        // visible work.
         val (pw, ph) = renderer.output_size()
-        val (bl, bt, br, bb) = bars.get()
-        val left = f32(bl)
-        val top = f32(bt)
-        val right = f32(pw - br)
-        val bottom = f32(ph - bb)
+        val now = view_of(pw, ph)
 
-        // **Every pending event is drained before anything is drawn.** A loop that took one event
-        // per frame would fall behind a finger moving across the glass, which is the input device
-        // this program is most likely to meet.
+        // **The box is built once the region is known, and rebuilt when it changes shape.** The
+        // insets arrive from the Java side a frame or two after the surface does, and turning the
+        // phone moves them — so the walls cannot be placed from anything known at startup.
+        //
+        // `b2DestroyWorld` frees every body and shape it made, and the binding's `impl Drop` on
+        // `&World` is what runs it. Nothing here is closed by hand.
+        if !built || now.scale != view.scale || now.bottom != view.bottom || now.top != view.top
+            w = world(gravity = zero())
+            walls = build_walls(w, now)
+            view = now
+            built = true
+            count = 0
+
+            for i in 0..<AT_START
+                var r = rng(seed, 1u64)
+
+                seed = seed * 6364136223846793005u64 + 1442695040888963407u64
+                toss(w, Vec2((f32(r.unit()) - 0.5) * now.half_width() * 1.6,
+                             0.8 + f32(r.unit()) * (now.tall() - 1.6)), &seed)
+                count += 1
+
         loop
             poll_event() match
                 Some(e) ->
                     if e.kind() == EventKind.Quit then running = false
                     elif e.kind() == EventKind.KeyDown && e.key_scancode() == SCANCODE_ESCAPE
                         running = false
+                    elif e.kind() == EventKind.MouseButtonDown && count < MOST
+                        // **A tap is a mouse button on Android**, because SDL synthesises mouse
+                        // events from touch unless told otherwise. That is why this demo needs no
+                        // finger handling at all and runs unchanged on a desktop.
+                        toss(w, view.to_world(e.mouse_x(), e.mouse_y()), &seed)
+                        count += 1
                 None -> break
 
-        // The step is the time the last frame actually took, clamped: an app sent to the background
-        // stops the loop for as long as it is away, and an unclamped step would then teleport the
-        // square through a wall on the way back.
-        val now = ticks()
-        var dt = f32(now - last) / 1000.0
+        // The step is the time the last frame took, clamped: an app sent to the background stops the
+        // loop for as long as it is away, and an unclamped step would put everything through a wall
+        // on the way back.
+        val t = ticks()
+        var dt = f32(t - last) / 1000.0
 
-        if dt > 0.1 then dt = 0.1
-        last = now
+        if dt > 0.05 then dt = 0.05
+        last = t
 
-        x += dx * dt
-        y += dy * dt
-
-        if x < left
-            x = left
-            dx = -dx
-        elif x + SIDE > right
-            x = right - SIDE
-            dx = -dx
-
-        if y < top
-            y = top
-            dy = -dy
-        elif y + SIDE > bottom
-            y = bottom - SIDE
-            dy = -dy
+        w.step(dt, 4)
 
         renderer.clear_to(rgb(18, 18, 22))
-        renderer.set_draw_color(rgb(120, 200, 255))
-        renderer.fill_rect(x, y, SIDE, SIDE)
+
+        // **There is no list of bodies kept here.** A body is reached from the world through a
+        // query, so everything loose is walked by asking what overlaps the visible region — which is
+        // what a game would do anyway to decide what to draw.
+        val half = view.half_width()
+        val visible = AABB(Vec2(-half - 1.0, -1.0), Vec2(half + 1.0, view.tall() + 1.0))
+        var n = 0
+
+        for shape in w.overlap_aabb(visible)
+            if shape.body().kind() != BodyKind.Static
+                draw_shape(renderer, view, shape, palette(n))
+                n += 1
+
         renderer.present()
 
-    // The window and the renderer both carry `Drop`, so there is nothing to close by hand — which
-    // leaves `quit` as the one teardown call this program makes.
     quit()
     0
 end sdl_main

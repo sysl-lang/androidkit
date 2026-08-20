@@ -10,6 +10,7 @@ side, and the CMake that joins the two halves. Everything worth reusing is in th
 
 ```
 sysl-lang/sdl3      windows, rendering, events and input — the same binding a desktop program uses
+sysl-lang/box2d     rigid-body physics — Box2D v3, vendored, and not one line of it Android-aware
 ```
 
 ## The whole program
@@ -75,7 +76,8 @@ with a different owner.
 
 | file | what it does |
 |---|---|
-| `androidkit/main.sysl` | the program — exports `SDL_main` |
+| `androidkit/main.sysl` | the program — exports `SDL_main` and the JNI entry point |
+| `androidkit/bars/bars.sysl` | where the system-bar insets live — a separate module for a compiler bug |
 | `app/src/main/cpp/CMakeLists.txt` | runs `sysl build-c`, links the archive into `libmain.so` |
 | `activity/src/main/scala/…/MainActivity.scala` | an `SDLActivity` subclass in **Scala**, which reads the system-bar insets |
 | `activity/build.sbt` | compiles it — AGP has no Scala support, so sbt does and Gradle takes the jar |
@@ -132,6 +134,35 @@ from a desktop, and each of these was found by watching it be wrong:
   about.
 - **A time step in seconds, clamped.** The square moves at the same speed on a 60 Hz phone and a
   120 Hz one, and an app sent to the background does not come back with the square through a wall.
+
+## Neither package knew it was on a phone
+
+The demo is Box2D physics drawn by SDL3: a boxful of discs, squares and triangles with **no gravity**,
+perfect restitution and no friction, so nothing ever settles. Tap to throw in another.
+
+**Neither `sh.sysl.sdl3` nor `sh.sysl.box2d` needed a line changed to run here**, and that is the
+claim the demo exists to make:
+
+- **box2d** is vendored Box2D v3 — portable C with `requires { heap, posix }`, both of which Bionic
+  answers. The NDK compiles it like any other C: 40 archive members, 660 `b2*` symbols.
+- **sdl3** is identical on a phone because `15 §8` says a `@link` directive names a *library* and
+  never a path. Only where the library lives changes, and that is `CMakeLists.txt`'s business.
+- **Taps need no finger handling.** SDL synthesises mouse events from touch, so
+  `EventKind.MouseButtonDown` with `mouse_x`/`mouse_y` is the whole of the input — and the same
+  source runs on a desktop.
+
+**One thing did have to change, and it was the compiler.** An Android program is always loaded as a
+`.so`, and a vendored library's globals are ordinary C globals — preemptible — so `ld.lld` refused
+them:
+
+```
+ld.lld: error: relocation R_AARCH64_ADR_PREL_PG_HI21 cannot be used against symbol
+  'b2AssertHandler'; recompile with -fPIC
+```
+
+`Toolchain.compileC` passed `-fPIC` nowhere. `targets.md § Android` had concluded no relocation model
+was needed, which was measured on sysl's *own* object — where every global is `Linkage.Private` and so
+not preemptible — and did not cover the C a package carries. Fixed in the compiler, not here.
 
 ## The Java half is Scala
 
