@@ -54,7 +54,7 @@ const FACE_RADIUS: f32 = 0.55
 //
 // It is the one thing here that genuinely takes energy out, since sliding contact dissipates. Low
 // enough that the box still runs for a long time, high enough that a hit visibly sets things turning.
-const FRICTION: f32 = 0.3
+const FRICTION: f32 = 0.2
 
 const AT_START: int = 18
 const MOST: int = 90
@@ -225,6 +225,52 @@ toss(w: &World, at: Vec2, seed: *u64)
         if tri.is_some() then b.polygon(def, tri.unwrap())
 end toss
 
+// ## Keeping it going
+//
+// **A rigid-body solver is not energy-preserving, and no amount of tuning makes Box2D one.** Turning
+// off the restitution threshold and the contact damping stopped the box dying in a minute; what is
+// left is the solver's own approximation — a soft-step integrator applies restitution once per
+// contact with a bounded impulse, so it under-restores — plus the friction that lets anything spin
+// at all, which dissipates whenever a contact slides.
+//
+// **So the energy is measured and put back, exactly.** Kinetic energy is `½mv² + ½Iω²` over every
+// loose body, and scaling every velocity by `s` scales it by `s²` — so restoring a target is one
+// square root and one pass. That is a governor rather than physics, and it is the honest way to have
+// a demo that never winds down: the alternative is pretending a number that keeps falling is
+// conserved.
+//
+// The rise is capped per frame so it eases rather than snapping, which matters after a tap: a new
+// body arrives carrying energy of its own, the total overshoots, and nothing is scaled *down* —
+// letting the target drift up is what a boxful of things being added to should do.
+const EASE: f32 = 1.01
+
+energy(w: &World, box: AABB) -> f32
+    var total: f32 = 0.0
+
+    for shape in w.overlap_aabb(box)
+        val b = shape.body()
+
+        if b.kind() != BodyKind.Static
+            val v = b.linear_velocity()
+            val a = b.angular_velocity()
+
+            total += 0.5 * b.mass() * (v.x * v.x + v.y * v.y) + 0.5 * b.rotational_inertia() * a * a
+
+    total
+end energy
+
+// Scale every loose body's motion by `s`, which multiplies the box's kinetic energy by `s²`.
+rescale(w: &World, box: AABB, s: f32)
+    for shape in w.overlap_aabb(box)
+        val b = shape.body()
+
+        if b.kind() != BodyKind.Static
+            val v = b.linear_velocity()
+
+            b.set_linear_velocity(Vec2(v.x * s, v.y * s))
+            b.set_angular_velocity(b.angular_velocity() * s)
+end rescale
+
 // ## Drawing
 //
 // A polygon is drawn as a **triangle fan** from its first vertex, which is exact for any convex
@@ -351,6 +397,7 @@ sdl_main(argc: i32, argv: **u8) -> i32
     var built = false
     var seed = 20260820u64
     var count = 0
+    var budget: f32 = 0.0
     var last = ticks()
     var running = true
 
@@ -380,6 +427,8 @@ sdl_main(argc: i32, argv: **u8) -> i32
                                        enable_sleep = false))
             portrait.circle(shape_def(density = 3.0, friction = FRICTION, restitution = 1.0),
                             circle(zero(), FACE_RADIUS))
+
+            budget = 0.0
 
             for i in 0..<AT_START
                 var r = rng(seed, 1u64)
@@ -413,6 +462,22 @@ sdl_main(argc: i32, argv: **u8) -> i32
         last = t
 
         w.step(dt, 4)
+
+        // The governor. The budget is set from the first frame after a build and from any frame that
+        // exceeds it — a tap adds a body and its energy with it — and is otherwise what the box is
+        // held at.
+        val half_now = view.half_width()
+        val whole = AABB(Vec2(-half_now - 1.0, -1.0), Vec2(half_now + 1.0, view.tall() + 1.0))
+        val now_e = energy(w, whole)
+
+        if now_e > budget
+            budget = now_e
+        elif now_e > 0.0001
+            var s = (budget / now_e).sqrt()
+
+            if s > EASE then s = EASE
+
+            rescale(w, whole, s)
 
         renderer.clear_to(rgb(18, 18, 22))
 

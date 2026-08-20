@@ -149,7 +149,16 @@ in another.
 - **`contact_damping_ratio`** — the default of 10 is heavily damped, which is right for a pile that
   should settle and wrong for this.
 
-A rigid-body solver is not conservative and this still drifts; what it no longer does is stop.
+**And the two settings are not enough on their own, because a rigid-body solver is not
+energy-preserving and no tuning makes Box2D one.** A soft-step integrator applies restitution once
+per contact with a bounded impulse, so it under-restores; and the friction below dissipates whenever
+a contact slides. So the demo **measures the kinetic energy and puts it back**: `½mv² + ½Iω²` over
+every loose body, and since scaling every velocity by `s` scales energy by `s²`, restoring a target
+is one square root and one pass.
+
+That is a governor rather than physics, and it is the honest way to have a demo that never winds
+down — the alternative is pretending a number that keeps falling is conserved. The target rises
+whenever it is exceeded, so a tap adds its body's energy to the budget rather than being scaled away.
 
 **And a little friction, which is what lets the picture spin at all.** Every impulse on a
 frictionless disc points along the line between the two centres, so it passes through the centre of
