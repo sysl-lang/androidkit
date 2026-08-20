@@ -26,8 +26,8 @@ package {
 // against an NDK and an API level somebody else chose, and a package hashing that into `sysl.sum`
 // would be shipping a build nobody in this org could reproduce.
 dependencies {
-  sdl3  { git = "github.com/sysl-lang/sdl3",  version = "0.2.2" }
-  box2d { git = "github.com/sysl-lang/box2d", version = "0.1.0" }
+  sdl3     { git = "github.com/sysl-lang/sdl3",     version = "0.2.3" }
+  sdl3-ttf { git = "github.com/sysl-lang/sdl3-ttf", version = "0.2.1" }
 }
 
 // `heap` and `posix` are what `sh.sysl.sdl3` itself requires, and a program reaching a gated module

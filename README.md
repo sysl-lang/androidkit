@@ -1,35 +1,20 @@
 # androidkit
 
-**sysl on Android, drawn by SDL3.** A phone runs an ordinary sysl program: `sysl build-c` compiles it
-to an archive, CMake links that into the `.so` the APK carries, and `SDLActivity` loads it.
+**A sysl program on Android, and the smallest one that shows anything.** Clone it, write over
+`androidkit/main.sysl`, and you have an app. `sysl build-c` compiles the program to an archive, CMake
+links that into the `.so` the APK carries, and `SDLActivity` loads it.
 
-This is a **program, not a package**. Nothing imports it. `picokit` says the same thing about a
-carrier board — *"This is a program, not a package. Nothing imports it"* — and this is that
-arrangement moved to a phone: the manifest, the Gradle build, the activity SDL needs on the Java
-side, and the CMake that joins the two halves. Everything worth reusing is in the packages it names.
+It puts one line of text on the screen. Everything else in the repository is the machinery that gets
+it there, and every piece of it is commented with why — most of them are things this program got
+wrong first.
 
 ```
-sysl-lang/sdl3      windows, rendering, events and input — the same binding a desktop program uses
-sysl-lang/box2d     rigid-body physics — Box2D v3, vendored, and not one line of it Android-aware
+sysl-lang/sdl3       windows, rendering, events and input
+sysl-lang/sdl3-ttf   real text, rasterized from a font the device already has
 ```
 
-## The whole program
-
-```sysl
-@export("SDL_main")
-sdl_main(argc: i32, argv: **u8) -> i32
-    …
-```
-
-**The interesting thing about it is its name.** Android has no `main`: `SDLActivity` loads
-`libmain.so` and looks up the symbol `SDL_main` in it, so what an Android program needs is not an
-entry point that runs first but one the Java half can find. `@export` publishes exactly that
-(`15 §12`).
-
-**So there is no C in this repository at all.** Every other SDL project carries a shim —
-`int SDL_main(int argc, char **argv) { return main(argc, argv); }` — because a C program's entry
-point is called `main` and SDL wants a different name. sysl can define the symbol directly, and the
-shim has nothing left to do.
+The demo it used to carry — Box2D physics, a photograph tumbling among the shapes — moved to
+`sysl-lang/bouncing` so that this one could stay small enough to read.
 
 ## Building it
 
@@ -42,9 +27,10 @@ export ANDROID_HOME=~/Library/Android/sdk
 ./gradlew assembleDebug
 ```
 
-`fetch-sdl3.sh` downloads SDL3's official Android release into `app/libs/`. It is not committed: 16 MB
-of binaries built against an NDK and an API level somebody else chose, and what belongs in a
-repository is something a person can read. picokit makes the same call about its pico-sdk clone.
+`fetch-sdl3.sh` downloads SDL3's and SDL_ttf's official Android releases into `app/libs/`. Neither is
+committed: they are tens of megabytes of binaries built against an NDK and an API level somebody else
+chose, and what belongs in a repository is something a person can read. picokit makes the same call
+about its pico-sdk clone.
 
 Then install it:
 
@@ -193,6 +179,26 @@ ld.lld: error: relocation R_AARCH64_ADR_PREL_PG_HI21 cannot be used against symb
 `Toolchain.compileC` passed `-fPIC` nowhere. `targets.md § Android` had concluded no relocation model
 was needed, which was measured on sysl's *own* object — where every global is `Linkage.Private` and so
 not preemptible — and did not cover the C a package carries. Fixed in the compiler, not here.
+
+## Text, and what it costs
+
+**`sdl3-ttf` rasterizes a real outline font**, so the message is antialiased at whatever size it is
+asked for. The font is one the device already has — `/system/fonts/Roboto-Regular.ttf` and friends,
+tried in order — so nothing is packaged, nothing is looked up at run time, and the same source falls
+back to a desktop font under `sysl run`.
+
+**The string is turned into a texture once, not every frame.** Rasterizing glyphs and uploading a
+texture sixty times a second to draw the same words is the mistake this binding makes easy.
+
+**Where the compiled SDL_ttf comes from**: a prebuilt `libSDL3_ttf.so` inside the AAR, which Gradle's
+prefab unpacks and packages into the APK. It is 20 MB in the archive and **1.9 MB in the APK** once
+Gradle strips it — FreeType and HarfBuzz are linked into it statically, which is why it is not small.
+
+**The cheaper option, if that matters**: SDL3 carries a fixed 8x8 bitmap font of its own, and
+`renderer.debug_text(x, y, "…")` needs no second AAR, no font and no package at all. It is a
+debugging font by SDL's own description — one size, one face, ASCII, no shaping — and scaling it up
+looks exactly like scaling a bitmap up. This program used it first; the screenshots are the argument
+for the 1.9 MB.
 
 ## The Java half is Scala
 

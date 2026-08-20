@@ -14,6 +14,11 @@ project(androidkit C)
 # version changes one line in `fetch-sdl3.sh` and nothing else.
 find_package(SDL3 REQUIRED CONFIG)
 
+# **SDL_ttf is a second AAR and a second package**, for the same reason the org ships four SDL
+# bindings rather than one: a link directive is never pruned, so a program that only drew rectangles
+# would still be asked for `-lSDL3_ttf` if the two were merged.
+find_package(SDL3_ttf REQUIRED CONFIG)
+
 # **The one thing CMake has to be told, because getting it wrong is not a link error.** `sysl` is a
 # program CMake knows nothing about, so the target it compiles for is stated here rather than
 # inferred. Only `arm64-v8a` is built (see `app/build.gradle.kts`), so there is one row to name.
@@ -34,6 +39,8 @@ set(SYSL_PROGRAM ${CMAKE_CURRENT_SOURCE_DIR}/../../../../androidkit)
 # `SDL3-Headers`, the library is `SDL3-shared`, and both are asked directly.
 get_target_property(SDL3_INCLUDE_DIR SDL3::SDL3-Headers INTERFACE_INCLUDE_DIRECTORIES)
 get_target_property(SDL3_SO SDL3::SDL3-shared IMPORTED_LOCATION)
+get_target_property(SDL3_TTF_INCLUDE_DIR SDL3_ttf::SDL3_ttf-shared INTERFACE_INCLUDE_DIRECTORIES)
+get_target_property(SDL3_TTF_SO SDL3_ttf::SDL3_ttf-shared IMPORTED_LOCATION)
 
 # **An empty one of these is not a warning, it is a corrupt command line.** `--link-path` with no
 # value takes the next word as its directory, so a blank here turned `-o` into a path and sysl
@@ -47,7 +54,12 @@ if(NOT SDL3_SO)
     message(FATAL_ERROR "SDL3::SDL3-shared has no IMPORTED_LOCATION — did prefab unpack the AAR? Run ./fetch-sdl3.sh")
 endif()
 
+if(NOT SDL3_TTF_INCLUDE_DIR OR NOT SDL3_TTF_SO)
+    message(FATAL_ERROR "SDL3_ttf's prefab module is not there — run ./fetch-sdl3.sh")
+endif()
+
 get_filename_component(SDL3_LIB_DIR ${SDL3_SO} DIRECTORY)
+get_filename_component(SDL3_TTF_LIB_DIR ${SDL3_TTF_SO} DIRECTORY)
 
 # **`--include-path sdl3=<dir>`, named rather than bare.** The package declares
 # `requires { pkg_config { sdl3 = … } }`, and a cross build cannot run pkg-config for another
@@ -66,7 +78,9 @@ add_custom_command(
             sysl build-c ${SYSL_PROGRAM}
             --target ${SYSL_TARGET}
             --include-path sdl3=${SDL3_INCLUDE_DIR}
+            --include-path sdl3-ttf=${SDL3_TTF_INCLUDE_DIR}
             --link-path ${SDL3_LIB_DIR}
+            --link-path ${SDL3_TTF_LIB_DIR}
             -o ${SYSL_ARCHIVE}
     DEPENDS ${SYSL_PROGRAM}/main.sysl ${SYSL_PROGRAM}/package.hocon
     COMMENT "Compiling androidkit for ${SYSL_TARGET}"
@@ -92,4 +106,4 @@ add_dependencies(main sysl_archive)
 # an empty archive.
 target_link_options(main PRIVATE -u SDL_main)
 
-target_link_libraries(main PRIVATE ${SYSL_ARCHIVE} SDL3::SDL3 m)
+target_link_libraries(main PRIVATE ${SYSL_ARCHIVE} SDL3::SDL3 SDL3_ttf::SDL3_ttf m)

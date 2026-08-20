@@ -7,32 +7,49 @@
 set -e
 
 SDL3_VERSION=3.4.14
+SDL3_TTF_VERSION=3.2.2
 
 here=$(cd "$(dirname "$0")" && pwd)
 libs="$here/app/libs"
 aar="$libs/SDL3-$SDL3_VERSION.aar"
 
-if [ -f "$aar" ]; then
-    echo "already have $aar"
-    exit 0
-fi
+ttf="$libs/SDL3_ttf-$SDL3_TTF_VERSION.aar"
 
 mkdir -p "$libs"
-tmp=$(mktemp -d)
-zip="$tmp/SDL3-devel-$SDL3_VERSION-android.zip"
 
-echo "fetching SDL3 $SDL3_VERSION for Android"
-curl -fsSL -o "$zip" \
-    "https://github.com/libsdl-org/SDL/releases/download/release-$SDL3_VERSION/SDL3-devel-$SDL3_VERSION-android.zip"
+# One function, called twice: the two releases have the same shape, and the only things that differ
+# are the repository, the asset name and the prefix an older copy is matched by.
+fetch() {
+    repo=$1
+    tag=$2
+    asset=$3
+    prefix=$4
+    want=$5
 
-# The zip holds the AAR plus its README and licence; only the AAR is wanted, and only one of them
-# is in there, so the name is taken from the archive rather than assumed.
-unzip -q -j "$zip" "*.aar" -d "$libs"
-rm -rf "$tmp"
+    if [ -f "$want" ]; then
+        echo "already have $want"
+        return
+    fi
 
-# Any older AAR beside it would be a second `SDL3::SDL3` for prefab to choose between.
-for old in "$libs"/SDL3-*.aar; do
-    [ "$old" = "$aar" ] || rm -f "$old"
-done
+    tmp=$(mktemp -d)
 
-echo "wrote $aar"
+    echo "fetching $asset"
+    curl -fsSL -o "$tmp/a.zip" \
+        "https://github.com/libsdl-org/$repo/releases/download/$tag/$asset"
+
+    # The zip holds the AAR plus its README and licence; only the AAR is wanted, and only one of
+    # them is in there, so the name is taken from the archive rather than assumed.
+    unzip -q -j "$tmp/a.zip" "*.aar" -d "$libs"
+    rm -rf "$tmp"
+
+    # Any older AAR beside it would be a second module for prefab to choose between.
+    for stale in "$libs/$prefix"*.aar; do
+        case "$stale" in "$want"|*"_ttf-"*) continue ;; esac
+        rm -f "$stale"
+    done
+
+    echo "wrote $want"
+}
+
+fetch SDL "release-$SDL3_VERSION" "SDL3-devel-$SDL3_VERSION-android.zip" "SDL3-" "$aar"
+fetch SDL_ttf "release-$SDL3_TTF_VERSION" "SDL3_ttf-devel-$SDL3_TTF_VERSION-android.zip" "SDL3_ttf-" "$ttf"
