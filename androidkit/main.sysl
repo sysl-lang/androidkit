@@ -23,7 +23,9 @@ import sh.sysl.sdl3.c.{INIT_VIDEO, SCANCODE_ESCAPE, WINDOW_RESIZABLE, Vertex}
 import sysl.buf.{Buf, buf}
 import sysl.rand.rng
 import sysl.math.Float
+import sysl.slices.as_ptr
 import bars
+import face
 
 // **What the window is asked for, and not what it gets.** Android answers a size request with the
 // screen, so these two matter only on a desktop. They also decide which way up an Android app
@@ -36,6 +38,9 @@ const WANTED_H: i32 = 600
 const VIEW_METRES: f32 = 9.0
 
 // How many things are in the air at the start, and the ceiling a finger can add up to.
+// How big the picture is in the world, as a radius in metres.
+const FACE_RADIUS: f32 = 0.55
+
 const AT_START: int = 18
 const MOST: int = 90
 
@@ -44,8 +49,12 @@ const MOST: int = 90
 // that git still holds a file.
 const FACE: i32 = 64
 
-// Eight colours, given to a body by the order it comes back from the query, so the screen stays
-// varied without anything having to remember which is whose.
+// Eight colours, chosen by the body's own id rather than by anything about the frame.
+//
+// **The first version keyed on the loop counter and every body changed colour every frame**, which
+// is what an AABB query is entitled to do: it answers in whatever order the broad-phase holds, and
+// that order moves as things move. `BodyId.index1` is Box2D's own slot for the body and does not
+// change while it lives, so the colour is a property of the thing rather than of the query.
 //
 // **A function rather than a `const` array**, because `rgb` is a call and `const` takes a constant
 // expression. A module `val` would have worked and is deliberately not used: computed module storage
@@ -119,6 +128,28 @@ view_of(pw: i32, ph: i32) -> View
 
     View(left, top, right, bottom, scale, (left + right) * 0.5)
 end view_of
+
+// **What keeps it going, and without these it stops.**
+//
+// A rigid-body solver is not a conservative system and Box2D does not claim to be one — but two of
+// its defaults drain energy fast enough that a boxful of perfectly elastic shapes comes to rest, and
+// both are settings rather than facts.
+//
+// **`restitution_threshold` is the one that actually kills it.** Box2D ignores restitution below a
+// relative speed — one metre per second by default — because a resting stack that keeps bouncing a
+// little is jitter rather than physics. Here it means every slow collision is inelastic, so a shape
+// that has been in a few glancing hits stops bouncing at all and the box goes quiet. Zero says
+// *always bounce*, which is only sane because nothing here is ever meant to rest.
+//
+// **Contact damping is the other.** The default ratio of 10 is heavily damped, which is right for a
+// pile that should settle and wrong for this. A stiffer, barely damped contact gives most of the
+// energy back.
+//
+// It is still not conservative and will drift; what it no longer does is stop.
+tune(w: &World)
+    w.set_restitution_threshold(0.0)
+    w.set_contact_tuning(120.0, 0.0, 3.0)
+end tune
 
 // ## The box everything is loose inside
 //
@@ -203,6 +234,44 @@ draw_polygon(ren: &Renderer, v: View, xf: Transform, p: c.Polygon, col: Color)
     ren.draw_geometry(verts.view(), idx.view())
 end draw_polygon
 
+// The picture, mapped onto the body's own rotated square.
+//
+// **`draw_geometry_textured` rather than a rotated blit**, because the rotation is already known: the
+// body carries a transform, so the four corners are computed in body space and pushed through it —
+// which is the same arithmetic `draw_polygon` does, with texture coordinates added. There is no
+// separate angle to keep in step with the simulation, because there is no angle at all.
+//
+// **The vertical flip is in the texture coordinates.** World y points up and a texture's v points
+// down, so the bottom-left corner of the quad is `(0, 1)` and not `(0, 0)`; getting it wrong is an
+// upside-down face rather than an error.
+draw_face(ren: &Renderer, v: View, tex: &Texture, b: Body)
+    val xf = b.transform()
+    val r = FACE_RADIUS
+    val corners = [Vec2(-r, -r), Vec2(r, -r), Vec2(r, r), Vec2(-r, r)]
+    // Annotated, because a bare float literal is a `real` and `Vertex`'s fields are `f32`.
+    val us: [4]f32 = [0.0, 1.0, 1.0, 0.0]
+    val vs: [4]f32 = [1.0, 1.0, 0.0, 0.0]
+
+    var verts: Buf[Vertex] = buf()
+    var idx: Buf[i32] = buf()
+
+    for i in 0..<4usize
+        val at = xf.apply(corners[i])
+
+        // White, fully opaque: a vertex colour multiplies the texture, so anything else would tint
+        // the picture.
+        verts.push(Vertex(v.to_screen_x(at.x), v.to_screen_y(at.y), 1.0, 1.0, 1.0, 1.0, us[i], vs[i]))
+
+    idx.push(0)
+    idx.push(1)
+    idx.push(2)
+    idx.push(0)
+    idx.push(2)
+    idx.push(3)
+
+    ren.draw_geometry_textured(tex, verts.view(), idx.view())
+end draw_face
+
 draw_shape(ren: &Renderer, v: View, s: Shape, col: Color)
     val body = s.body()
     val xf = body.transform()
@@ -247,10 +316,24 @@ sdl_main(argc: i32, argv: **u8) -> i32
     // fan.
     renderer.set_vsync(true)
 
+    // **Blending on, or the masked corners of the picture are drawn black.** A renderer starts with
+    // it off, and the 588 transparent pixels around the circular avatar are exactly what needs it.
+    renderer.set_blend_mode(BlendMode.Blend)
+
+    // The one image, uploaded once. `Abgr8888` is memory-order RGBA on a little-endian machine —
+    // see `face.sysl`, where the bytes are.
+    val made = renderer.create_texture(PixelFormat.Abgr8888, TextureAccess.Streaming,
+                                       face.SIZE, face.SIZE)
+    val picture = made.expect("a texture")
+
+    picture.update(as_ptr(face.PIXELS[0..<face.PIXELS.len]), face.SIZE * 4)
+    picture.set_blend_mode(BlendMode.Blend)
+
     // **No gravity.** Everything is thrown once and then only ever changes direction.
-    var w = world(gravity = zero())
+    var w = world(gravity = zero(), enable_sleep = false)
     var view = view_of(WANTED_W, WANTED_H)
     var walls = w.body(body_def())
+    var portrait = w.body(body_def())
     var built = false
     var seed = 20260820u64
     var count = 0
@@ -268,11 +351,21 @@ sdl_main(argc: i32, argv: **u8) -> i32
         // `b2DestroyWorld` frees every body and shape it made, and the binding's `impl Drop` on
         // `&World` is what runs it. Nothing here is closed by hand.
         if !built || now.scale != view.scale || now.bottom != view.bottom || now.top != view.top
-            w = world(gravity = zero())
+            w = world(gravity = zero(), enable_sleep = false)
+            tune(w)
             walls = build_walls(w, now)
             view = now
             built = true
             count = 0
+
+            // **The picture starts in the middle and perfectly still**, and is dynamic — so it does
+            // nothing at all until something runs into it, and then it is shoved and set spinning
+            // like everything else. Heavier than the rest, so a hit moves it without launching it.
+            portrait = w.body(body_def(kind = BodyKind.Dynamic,
+                                       position = Vec2(0.0, now.tall() * 0.5),
+                                       enable_sleep = false))
+            portrait.circle(shape_def(density = 3.0, friction = 0.0, restitution = 1.0),
+                            circle(zero(), FACE_RADIUS))
 
             for i in 0..<AT_START
                 var r = rng(seed, 1u64)
@@ -317,8 +410,17 @@ sdl_main(argc: i32, argv: **u8) -> i32
         var n = 0
 
         for shape in w.overlap_aabb(visible)
-            if shape.body().kind() != BodyKind.Static
-                draw_shape(renderer, view, shape, palette(n))
+            val b = shape.body()
+
+            if b.kind() != BodyKind.Static
+                if b.id.index1 == portrait.id.index1
+                    draw_face(renderer, view, picture, b)
+                else
+                    // **Keyed on the body's own id, not on `n`.** An AABB query answers in whatever
+                    // order the broad-phase holds, and that order moves as things move — so counting
+                    // the loop gave every shape a new colour every frame.
+                    draw_shape(renderer, view, shape, palette(int(b.id.index1)))
+
                 n += 1
 
         renderer.present()

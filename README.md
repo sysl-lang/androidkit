@@ -138,7 +138,18 @@ from a desktop, and each of these was found by watching it be wrong:
 ## Neither package knew it was on a phone
 
 The demo is Box2D physics drawn by SDL3: a boxful of discs, squares and triangles with **no gravity**,
-perfect restitution and no friction, so nothing ever settles. Tap to throw in another.
+perfect restitution and no friction, so nothing ever settles. One body carries an image. Tap to throw
+in another.
+
+**Two of Box2D's defaults have to be turned off or it all stops**, and neither is a fact about physics:
+
+- **`restitution_threshold`** — Box2D ignores restitution below a relative speed, one metre per second
+  by default, because a stack that keeps bouncing a little is jitter. Here it means every glancing hit
+  is inelastic and the box goes quiet within a minute. Zero says *always bounce*.
+- **`contact_damping_ratio`** — the default of 10 is heavily damped, which is right for a pile that
+  should settle and wrong for this.
+
+A rigid-body solver is not conservative and this still drifts; what it no longer does is stop.
 
 **Neither `sh.sysl.sdl3` nor `sh.sysl.box2d` needed a line changed to run here**, and that is the
 claim the demo exists to make:
