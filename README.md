@@ -151,6 +151,14 @@ in another.
 
 A rigid-body solver is not conservative and this still drifts; what it no longer does is stop.
 
+**And a little friction, which is what lets the picture spin at all.** Every impulse on a
+frictionless disc points along the line between the two centres, so it passes through the centre of
+mass and its torque is exactly zero — a frictionless circle that starts at rest can never be made to
+rotate, however hard it is hit. The thrown shapes spin only because they were given an
+`angular_velocity`; the picture starts still by design. Box2D mixes the two shapes' friction as their
+geometric mean, so one frictionless party makes the whole contact frictionless — which is why it is
+on the walls and on everything thrown, not just on the picture.
+
 **Neither `sh.sysl.sdl3` nor `sh.sysl.box2d` needed a line changed to run here**, and that is the
 claim the demo exists to make:
 

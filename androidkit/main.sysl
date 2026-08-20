@@ -41,6 +41,21 @@ const VIEW_METRES: f32 = 9.0
 // How big the picture is in the world, as a radius in metres.
 const FACE_RADIUS: f32 = 0.55
 
+// **Friction is what lets the picture spin, and without it that is impossible rather than merely
+// unlikely.** Every impulse on a frictionless disc points along the line between the two centres, so
+// it passes through the centre of mass and its torque is exactly zero — a frictionless circle that
+// starts still can never be made to rotate, however hard it is hit. The other shapes spin only
+// because they were thrown with an `angular_velocity`; the picture starts at rest by design, so
+// friction is the only way it can ever acquire any.
+//
+// **It has to be on both sides of a contact.** Box2D mixes the two shapes' values as their geometric
+// mean, so one frictionless party makes the contact frictionless — which is why this is on the walls
+// and on everything thrown, and not only on the picture.
+//
+// It is the one thing here that genuinely takes energy out, since sliding contact dissipates. Low
+// enough that the box still runs for a long time, high enough that a hit visibly sets things turning.
+const FRICTION: f32 = 0.3
+
 const AT_START: int = 18
 const MOST: int = 90
 
@@ -163,7 +178,7 @@ build_walls(w: &World, v: View) -> Body
     val g = w.body(body_def())
     val half = v.half_width()
     val tall = v.tall()
-    val bouncy = shape_def(friction = 0.0, restitution = 1.0)
+    val bouncy = shape_def(friction = FRICTION, restitution = 1.0)
 
     g.polygon(bouncy, make_offset_box(half + 1.0, 0.5, Vec2(0.0, -0.5)))
     g.polygon(bouncy, make_offset_box(half + 1.0, 0.5, Vec2(0.0, tall + 0.5)))
@@ -193,9 +208,8 @@ toss(w: &World, at: Vec2, seed: *u64)
         angular_velocity = (f32(r.unit()) - 0.5) * 14.0,
         enable_sleep = false))
 
-    // No friction and a perfect bounce, on both sides of every contact — so a collision changes
-    // where something is going and never how fast, and the spin it was given is the spin it keeps.
-    val def = shape_def(density = 1.0, friction = 0.0, restitution = 1.0)
+    // A perfect bounce, and just enough friction to turn a glancing hit into spin — see `FRICTION`.
+    val def = shape_def(density = 1.0, friction = FRICTION, restitution = 1.0)
     val pick = r.below(3u64)
 
     if pick == 0u64
@@ -364,7 +378,7 @@ sdl_main(argc: i32, argv: **u8) -> i32
             portrait = w.body(body_def(kind = BodyKind.Dynamic,
                                        position = Vec2(0.0, now.tall() * 0.5),
                                        enable_sleep = false))
-            portrait.circle(shape_def(density = 3.0, friction = 0.0, restitution = 1.0),
+            portrait.circle(shape_def(density = 3.0, friction = FRICTION, restitution = 1.0),
                             circle(zero(), FACE_RADIUS))
 
             for i in 0..<AT_START
