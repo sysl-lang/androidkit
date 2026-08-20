@@ -1,0 +1,18 @@
+# SDL3's Android release, which `./fetch-sdl3.sh` downloads. 16 MB of binaries built against an NDK
+# and an API level somebody else chose — the org's rule against carrying a prebuilt `.so` in a
+# package, applied one level up.
+app/libs/*.aar
+
+# Gradle and AGP output.
+.gradle/
+build/
+app/build/
+app/.cxx/
+
+# Written by Android Studio when it opens the project, and holds `sdk.dir` — an absolute path into
+# somebody's home directory.
+local.properties
+
+# The IDE's own state.
+.idea/
+*.iml
