@@ -76,8 +76,7 @@ with a different owner.
 
 | file | what it does |
 |---|---|
-| `androidkit/main.sysl` | the program — exports `SDL_main` and the JNI entry point |
-| `androidkit/bars/bars.sysl` | where the system-bar insets live — a separate module for a compiler bug |
+| `androidkit/main.sysl` | the whole program — both exports, the physics, the drawing, and the image |
 | `app/src/main/cpp/CMakeLists.txt` | runs `sysl build-c`, links the archive into `libmain.so` |
 | `activity/src/main/scala/…/MainActivity.scala` | an `SDLActivity` subclass in **Scala**, which reads the system-bar insets |
 | `activity/build.sbt` | compiles it — AGP has no Scala support, so sbt does and Gradle takes the jar |
@@ -126,7 +125,10 @@ from a desktop, and each of these was found by watching it be wrong:
 
   SDL exposes only the combined rectangle, so `MainActivity` reads
   `WindowInsets.Type.systemBars()` and calls a native method **defined in sysl** — which is what the
-  `@export("Java_sh_sysl_androidkit_MainActivity_nativeSetSystemBars")` in `main.sysl` is. The third
+  `@export("Java_sh_sysl_androidkit_MainActivity_nativeSetSystemBars")` in `main.sysl` is. The insets
+  it writes are module storage in that same file, which until sysl `e282d3cb` was impossible: an
+  `@export` in a header-less file that reached module storage made every `@export` in the file vanish
+  (card `0167`), so they lived in a module of their own purely to dodge it. The third
   option is `window.set_fullscreen(true)`, which hides the bars and hands the program the glass;
   that is what a game wants, and then every rectangle here is the whole window.
 - **`android:theme` with `Theme.NoTitleBar.Fullscreen`.** An action bar over the top means SDL's
