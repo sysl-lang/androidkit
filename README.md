@@ -16,6 +16,18 @@ sysl-lang/sdl3-ttf   real text, rasterized from a font the device already has
 The demo it used to carry — Box2D physics, a photograph tumbling among the shapes — moved to
 `sysl-lang/bouncing` so that this one could stay small enough to read.
 
+## Try it without building it
+
+**[Download the APK](https://github.com/sysl-lang/androidkit/releases/latest/download/androidkit.apk)** and open it on an Android phone.
+
+- **Android 8.0 or newer** (`minSdk 26`), and **arm64** — which is every phone since about 2015. It
+  will *not* install on an x86_64 emulator, because sysl has one Android target and that is
+  `aarch64-android`.
+- Your phone will ask whether to allow installing from wherever you downloaded it. That prompt is
+  what sideloading is; it is not a warning about this app in particular.
+- It is signed with the project's own key rather than by a store, so it is not checked by anyone but
+  you. The source is right here.
+
 ## Building it
 
 You need Android Studio's SDK with the **NDK** and **CMake** installed (SDK Manager → SDK Tools),

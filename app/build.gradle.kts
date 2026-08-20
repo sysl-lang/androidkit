@@ -1,5 +1,21 @@
+import java.util.Properties
+
 plugins {
     id("com.android.application")
+}
+
+// **The release signing key, which is deliberately not in this repository.** It is read from
+// `~/.android/sysl-signing.properties` — keystore path, password and alias — and where that file is
+// absent the release build is simply unsigned, so a fresh clone still builds without it. A key
+// committed beside the thing it signs is not a key.
+//
+// **Losing it costs more than it looks.** Android identifies an app by its signature, so a new key
+// means a new identity: an APK signed with a different one will not install over an existing
+// install, and everybody who has it has to uninstall first.
+val signingProps = Properties().apply {
+    val f = File(System.getProperty("user.home"), ".android/sysl-signing.properties")
+
+    if (f.exists()) f.inputStream().use { load(it) }
 }
 
 android {
@@ -61,8 +77,28 @@ android {
         prefab = true
     }
 
+    signingConfigs {
+        create("release") {
+            signingProps.getProperty("SYSL_KEYSTORE")?.let {
+                storeFile = File(it)
+                storePassword = signingProps.getProperty("SYSL_KEYSTORE_PASSWORD")
+                keyAlias = signingProps.getProperty("SYSL_KEY_ALIAS")
+                keyPassword = signingProps.getProperty("SYSL_KEYSTORE_PASSWORD")
+            }
+        }
+    }
+
     buildTypes {
         release {
+            if (signingProps.getProperty("SYSL_KEYSTORE") != null) {
+                signingConfig = signingConfigs.getByName("release")
+            }
+
+            // **Shrinking is off, and that is a decision rather than a default.** R8 works by
+            // reachability, and two things here are reached by neither: the activity is named in the
+            // manifest as a string, and `nativeSetSystemBars` is called *from native code* through
+            // JNI. Both need keep rules, and getting one wrong produces an app that installs and
+            // dies at the first inset. The APK is a few megabytes larger and the demo runs.
             isMinifyEnabled = false
             proguardFiles(getDefaultProguardFile("proguard-android-optimize.txt"), "proguard-rules.pro")
         }
@@ -99,15 +135,24 @@ val compileActivity = tasks.register<Exec>("compileActivity") {
     // *inside* the AAR, so it has to be unzipped by somebody, and this is where the AAR's path is
     // already known.
     doFirst {
-        val sdlAar = file("libs").listFiles { f -> f.name.endsWith(".aar") }?.firstOrNull()
-            ?: throw GradleException("no SDL3 AAR in app/libs — run ./fetch-sdl3.sh")
+        // **Every AAR, not the first one.** `firstOrNull()` was fine while there was one; with
+        // SDL3_ttf beside SDL3 it picked whichever the filesystem listed first, and handing sbt
+        // SDL3_ttf's `classes.jar` left `SDLActivity` off the classpath — which Scala reports as a
+        // *cyclic reference* on the `extends` clause, not as a missing type.
+        val aars = file("libs").listFiles { f -> f.name.endsWith(".aar") }?.sorted().orEmpty()
 
-        val extracted = layout.buildDirectory.dir("sdl-classes").get().asFile
+        if (aars.isEmpty()) throw GradleException("no AAR in app/libs — run ./fetch-sdl3.sh")
 
-        copy {
-            from(zipTree(sdlAar)) { include("classes.jar") }
-            into(extracted)
-        }
+        val jars = aars.map { aar ->
+            val into = layout.buildDirectory.dir("aar-classes/${aar.nameWithoutExtension}").get().asFile
+
+            copy {
+                from(zipTree(aar)) { include("classes.jar") }
+                into(into)
+            }
+
+            into.resolve("classes.jar")
+        }.filter { it.isFile }
 
         // `android.jar` from the SDK the rest of the build already requires. The newest installed
         // platform is taken rather than one matching `compileSdk`, because the directory may carry a
@@ -124,7 +169,7 @@ val compileActivity = tasks.register<Exec>("compileActivity") {
 
         environment(
             "ANDROIDKIT_CLASSPATH",
-            listOf(androidJar, extracted.resolve("classes.jar")).joinToString(File.pathSeparator),
+            (listOf(androidJar) + jars).joinToString(File.pathSeparator),
         )
     }
 
