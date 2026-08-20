@@ -1,0 +1,15 @@
+[debug] Packaging /Users/ed/dev/sysl-lang/androidkit/activity/target/androidkit-activity-0.1.0-SNAPSHOT.jar ...
+[debug] Input file mappings:
+[debug] 	sh
+[debug] 	  /Users/ed/dev/sysl-lang/androidkit/activity/target/classes/sh
+[debug] 	sh/sysl
+[debug] 	  /Users/ed/dev/sysl-lang/androidkit/activity/target/classes/sh/sysl
+[debug] 	sh/sysl/androidkit
+[debug] 	  /Users/ed/dev/sysl-lang/androidkit/activity/target/classes/sh/sysl/androidkit
+[debug] 	sh/sysl/androidkit/MainActivity.class
+[debug] 	  /Users/ed/dev/sysl-lang/androidkit/activity/target/classes/sh/sysl/androidkit/MainActivity.class
+[debug] 	sh/sysl/androidkit/MainActivity.tasty
+[debug] 	  /Users/ed/dev/sysl-lang/androidkit/activity/target/classes/sh/sysl/androidkit/MainActivity.tasty
+[debug] 	sh/sysl/androidkit/MainActivity$$anon$1.class
+[debug] 	  /Users/ed/dev/sysl-lang/androidkit/activity/target/classes/sh/sysl/androidkit/MainActivity$$anon$1.class
+[debug] Done packaging.

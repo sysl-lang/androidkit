@@ -1,0 +1,17 @@
+[debug] Created transactional ClassFileManager with tempDir = /Users/ed/dev/sysl-lang/androidkit/activity/target/classes.bak
+[debug] About to delete class files:
+[debug] 	MainActivity.class
+[debug] 	MainActivity$$anon$1.class
+[debug] 	MainActivity.tasty
+[debug] 	MainActivity$$anon$1.tasty
+[debug] We backup class files:
+[debug] 	MainActivity.class
+[debug] 	MainActivity$$anon$1.class
+[debug] 	MainActivity.tasty
+[debug] 	MainActivity$$anon$1.tasty
+[debug] Registering generated classes:
+[debug] 	MainActivity$$anon$1.class
+[debug] 	MainActivity.class
+[debug] 	MainActivity$$anon$1.tasty
+[debug] 	MainActivity.tasty
+[debug] Removing the temporary directory used for backing up class files: /Users/ed/dev/sysl-lang/androidkit/activity/target/classes.bak

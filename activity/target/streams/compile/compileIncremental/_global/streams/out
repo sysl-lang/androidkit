@@ -1,0 +1,30 @@
+[debug] [zinc] IncrementalCompile -----------
+[debug] IncrementalCompile.incrementalCompile
+[debug] previous = Stamps for: 2 products, 1 sources, 3 libraries
+[debug] current source = Set(${BASE}/src/main/scala/sh/sysl/androidkit/MainActivity.scala)
+[debug] > initialChanges = InitialChanges(Changes(added = Set(), removed = Set(), changed = Set(${BASE}/src/main/scala/sh/sysl/androidkit/MainActivity.scala), unmodified = ...),Set(),Set(),API Changes: Set())
+[debug] 
+[debug] Initial source changes:
+[debug] 	removed: Set()
+[debug] 	added: Set()
+[debug] 	modified: Set(${BASE}/src/main/scala/sh/sysl/androidkit/MainActivity.scala)
+[debug] Invalidated products: Set()
+[debug] External API changes: API Changes: Set()
+[debug] Modified binary dependencies: Set()
+[debug] Initial directly invalidated classes: Set(sh.sysl.androidkit.MainActivity)
+[debug] Sources indirectly invalidated by:
+[debug] 	product: Set()
+[debug] 	binary dep: Set()
+[debug] 	external source: Set()
+[debug] all 1 sources are invalidated
+[debug] Initial set of included nodes: sh.sysl.androidkit.MainActivity
+[debug] Recompiling all sources: number of invalidated sources > 50.0 percent of all sources
+[debug] compilation cycle 1
+[info] compiling 1 Scala source to /Users/ed/dev/sysl-lang/androidkit/activity/target/classes ...
+[debug] Returning already retrieved and compiled bridge: /Users/ed/Library/Caches/Coursier/v1/https/repo1.maven.org/maven2/org/scala-lang/scala3-sbt-bridge/3.8.2/scala3-sbt-bridge-3.8.2.jar.
+[debug] [zinc] Running cached compiler 5f0e5baa for Scala Compiler version 3.8.2
+[debug] [zinc] The Scala compiler is invoked with:
+[debug] 	-classpath
+[debug] 	/Users/ed/dev/sysl-lang/androidkit/activity/target/classes:/Users/ed/Library/Android/sdk/platforms/android-36.1/android.jar:/Users/ed/dev/sysl-lang/androidkit/app/build/sdl-classes/classes.jar:/Users/ed/Library/Caches/Coursier/v1/https/repo1.maven.org/maven2/org/scala-lang/scala3-library_3/3.8.2/scala3-library_3-3.8.2.jar:/Users/ed/Library/Caches/Coursier/v1/https/repo1.maven.org/maven2/org/scala-lang/scala-library/3.8.2/scala-library-3.8.2.jar
+[debug] Scala compilation took 1.297496791 s
+[info] done compiling

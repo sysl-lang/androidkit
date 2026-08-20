@@ -32,8 +32,8 @@ shim has nothing left to do.
 
 ## Building it
 
-You need Android Studio's SDK with the **NDK** and **CMake** installed (SDK Manager → SDK Tools), and
-`ANDROID_HOME` set:
+You need Android Studio's SDK with the **NDK** and **CMake** installed (SDK Manager → SDK Tools),
+**`sbt`** on the path, and `ANDROID_HOME` set:
 
 ```
 export ANDROID_HOME=~/Library/Android/sdk
@@ -63,7 +63,7 @@ lists the machines a compiler has; if `aarch64-android` is not among them, the b
 
 There is no `sysl new`. Copy the repository, rename the inner `androidkit/` directory and the `name`
 in its `package.hocon`, set `applicationId` and `namespace` in `app/build.gradle.kts`, move
-`MainActivity.kt` to match, and write `androidkit/main.sysl`. picokit set that precedent and this
+`MainActivity.scala` to match, and write `androidkit/main.sysl`. picokit set that precedent and this
 follows it.
 
 ## How the two halves are joined
@@ -77,7 +77,8 @@ with a different owner.
 |---|---|
 | `androidkit/main.sysl` | the program — exports `SDL_main` |
 | `app/src/main/cpp/CMakeLists.txt` | runs `sysl build-c`, links the archive into `libmain.so` |
-| `app/src/main/kotlin/…/MainActivity.kt` | an empty `SDLActivity` subclass, so the manifest has a class to name |
+| `activity/src/main/scala/…/MainActivity.scala` | an `SDLActivity` subclass in **Scala**, which reads the system-bar insets |
+| `activity/build.sbt` | compiles it — AGP has no Scala support, so sbt does and Gradle takes the jar |
 | `app/build.gradle.kts` | `prefab true`, one ABI, the pinned NDK |
 | `fetch-sdl3.sh` | downloads the AAR |
 
@@ -131,6 +132,33 @@ from a desktop, and each of these was found by watching it be wrong:
   about.
 - **A time step in seconds, clamped.** The square moves at the same speed on a 60 Hz phone and a
   120 Hz one, and an app sent to the background does not come back with the square through a wall.
+
+## The Java half is Scala
+
+**There is no Java in this repository and no Kotlin either.** `MainActivity` is Scala 3, and the
+Scala standard library is a dependency of the application — so an activity here can use the language
+and not only its syntax. The demo proves it rather than claiming it: the insets are logged through a
+`List`, a `zip`, a `map` and an interpolated string, none of which links without the runtime.
+
+**What it costs is a second build system, and that is the whole of the cost.** The Android Gradle
+plugin compiles Java and Kotlin itself and has no Scala support, so `activity/` is an sbt project and
+`app/build.gradle.kts` runs it as a task and puts the jar on the classpath. `./gradlew assembleDebug`
+is still the one command; `sbt` has to be installed.
+
+**Two things bite, and both are silent:**
+
+- **A `private` `@native` method does not work.** Scala renames a private method reached from an
+  inner class to `sh$sysl$androidkit$MainActivity$$nativeSetSystemBars` so the inner class can see
+  it, and JNI then looks for a symbol with `_00024` in it that nothing defines. It compiles, links,
+  and dies at the first call with an `UnsatisfiedLinkError`. The listener is an inner class, so this
+  is exactly that case — leave the method non-private.
+- **`minSdk` is 26 because of `scala-library`.** `d8` refuses to dex it below that — *"Increase the
+  minSdkVersion to 26 or above"* — so an APK carrying the Scala runtime starts at Android 8.0. SDL's
+  own floor is 21 and sysl's triple states 24; the three do not have to agree and the higher wins.
+
+For comparison, Kotlin costs **nothing at all** under AGP 9 — it is compiled by AGP itself, and the
+`org.jetbrains.kotlin.android` plugin is refused outright as no longer required. Scala is here
+because it is what this project is written in everywhere else.
 
 ## One ABI
 
