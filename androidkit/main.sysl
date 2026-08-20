@@ -15,6 +15,7 @@
 
 import sh.sysl.sdl3.*
 import sh.sysl.sdl3.c.{INIT_VIDEO, SCANCODE_ESCAPE, WINDOW_RESIZABLE}
+import bars
 
 // **What the window is asked for, and not what it gets.** Android answers a size request with the
 // screen, so these two numbers matter only on a desktop; the size the program actually draws to is
@@ -31,6 +32,34 @@ const WANTED_H: i32 = 600
 // what makes it the same on a 60 Hz phone and a 120 Hz one.
 const SIDE: f32 = 140.0
 const SPEED: f32 = 320.0
+
+// ## The bars, which SDL will not tell you about on their own
+//
+// **`window.safe_area()` is not the rectangle a *drawing* wants, and the difference is not small.**
+// SDL builds Android's safe area out of five inset types at once — `systemBars`, `systemGestures`,
+// `mandatorySystemGestures`, `tappableElement` and `displayCutout` — so it answers *where can a
+// button go*, which is what its own documentation says: content outside it "should not contain
+// visually important or interactable content".
+//
+// Measured on a gesture-navigation phone, that is **78 pixels off each side** for the back-gesture
+// strips, and a bottom inset reaching **21 pixels above** the navigation bar it sits under. For a
+// picture all of that is too conservative: nothing here is touchable, and the sides are perfectly
+// visible.
+//
+// What a drawing wants is the window minus the **system bars** and nothing else — and SDL exposes
+// only the combined rectangle, so the Java half reads the insets and hands them over through the
+// JNI entry point below. `bars` holds them; see that file for why they are not in this one.
+//
+// **A JNI entry point, defined in sysl.** The name is not a style: JNI resolves an `external fun` by
+// mangling its package and class into `Java_<package>_<Class>_<method>`, so this string is what
+// `MainActivity.nativeSetSystemBars` binds to. A rename on either side still links — JNI resolves at
+// run time — and fails at the first call.
+//
+// The first two parameters are JNI's own, the environment and the instance, and neither is used, so
+// both are taken as opaque pointers rather than described. (`self` is a reserved word, hence
+// `instance`.)
+@export("Java_sh_sysl_androidkit_MainActivity_nativeSetSystemBars")
+set_system_bars(env: *u8, instance: *u8, l: i32, t: i32, r: i32, b: i32) = bars.set(l, t, r, b)
 
 @export("SDL_main")
 sdl_main(argc: i32, argv: **u8) -> i32
@@ -69,27 +98,25 @@ sdl_main(argc: i32, argv: **u8) -> i32
     var running = true
 
     while running
-        // **Where it is safe to draw, asked every frame rather than once.**
+        // **The visible region between the bars, recomputed every frame.**
         //
-        // From API 35 an Android app draws edge to edge whether it asks to or not — there is no
-        // opting out by targeting lower — so the window runs *under* the status bar at the top and
-        // the gesture bar at the bottom. A program that bounced against the window's own size would
-        // send the square behind both of them, correctly drawn and invisible, which is what this
-        // demo did before it asked. `safe_area` is the rectangle with those subtracted.
+        // From API 35 an Android app draws edge to edge whether it asks to or not, so the window runs
+        // *under* the status bar at the top and the navigation bar at the bottom. Bouncing against
+        // the window's own size sends the square behind both — correctly drawn and invisible.
         //
-        // Asked per frame because it changes: turning the phone moves the bars, and so does anything
-        // that shows or hides one. One SDL call a frame is nothing, and caching it is how a program
-        // ends up bouncing off where the wall used to be.
+        // Recomputed rather than cached because the insets change: turning the phone moves them, and
+        // so does anything that shows or hides a bar.
         //
-        // **The other answer is `window.set_fullscreen(true)`, which hides the bars and hands the
-        // program the glass** — right for a game, and it makes the safe area the whole window, so
-        // nothing below would have to change. This demo keeps them so that the rectangle is doing
+        // **The third answer is `window.set_fullscreen(true)`**, which hides the bars and hands the
+        // program the glass. That is what a game wants, and it makes every rectangle here the whole
+        // window — so nothing below would change. This demo keeps the bars so the arithmetic is doing
         // visible work.
-        val safe = window.safe_area()
-        val left = f32(safe.x)
-        val top = f32(safe.y)
-        val right = f32(safe.x + safe.w)
-        val bottom = f32(safe.y + safe.h)
+        val (pw, ph) = renderer.output_size()
+        val (bl, bt, br, bb) = bars.get()
+        val left = f32(bl)
+        val top = f32(bt)
+        val right = f32(pw - br)
+        val bottom = f32(ph - bb)
 
         // **Every pending event is drained before anything is drawn.** A loop that took one event
         // per frame would fall behind a finger moving across the glass, which is the input device

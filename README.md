@@ -109,12 +109,23 @@ from a desktop, and each of these was found by watching it be wrong:
   phone sideways. Naming all four orientations is not enough on its own: `SDLActivity`'s
   `setOrientationBis` only promotes "both allowed" to *follow the device* when the window is
   **resizable**. The two together are what make it `FULL_USER`.
-- **`window.safe_area()`, asked every frame.** From API 35 an Android app draws edge to edge whether
-  it asks to or not, so the window runs under the status bar and the gesture bar. A program bouncing
-  against the window's own size sends its contents behind both — correctly drawn and invisible. The
-  alternative is `window.set_fullscreen(true)`, which hides the bars and hands the program the glass;
-  that is what a game wants, and it makes the safe area the whole window, so code written against the
-  safe area stays right either way.
+- **The system bars, read on the Java side and handed over through JNI.** From API 35 an Android app
+  draws edge to edge whether it asks to or not, so the window runs under the status bar and the
+  navigation bar, and a program bouncing against the window's own size sends its contents behind both
+  — correctly drawn and invisible.
+
+  **`window.safe_area()` is the obvious answer and it is the wrong rectangle for a drawing.** SDL
+  builds it out of five inset types at once — `systemBars`, `systemGestures`,
+  `mandatorySystemGestures`, `tappableElement`, `displayCutout` — because it answers *where can a
+  button go*. Measured on a gesture-navigation phone that is **78 pixels off each side** for the
+  back-gesture strips and a bottom inset reaching **21 pixels above** the navigation bar. For a
+  picture all of it is too conservative: nothing is touchable and the sides are perfectly visible.
+
+  SDL exposes only the combined rectangle, so `MainActivity` reads
+  `WindowInsets.Type.systemBars()` and calls a native method **defined in sysl** — which is what the
+  `@export("Java_sh_sysl_androidkit_MainActivity_nativeSetSystemBars")` in `main.sysl` is. The third
+  option is `window.set_fullscreen(true)`, which hides the bars and hands the program the glass;
+  that is what a game wants, and then every rectangle here is the whole window.
 - **`android:theme` with `Theme.NoTitleBar.Fullscreen`.** An action bar over the top means SDL's
   surface starts below it, and everything drawn is offset by a bar height the program was never told
   about.

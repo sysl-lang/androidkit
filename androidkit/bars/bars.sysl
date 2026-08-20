@@ -1,0 +1,35 @@
+// Where the system bars are, as the Java half last reported them.
+//
+// **This is a module of its own for a compiler bug, not for a design reason**, and the four values
+// would otherwise sit beside the JNI entry point that writes them. An `@export`ed function in a file
+// that can reach module storage causes **every** `@export` in that file to be silently dropped —
+// no error, one warning saying the module exports nothing, and an archive with no entry point. The
+// symptom on Android is an `UnsatisfiedLinkError` naming the method, which reads as a missing
+// `System.loadLibrary` and is not.
+//
+// A separate module is not affected, so the storage lives here and `main.sysl` reaches it through
+// these two functions. Filed as a card against the compiler; when it is fixed this collapses back
+// into one file.
+module bars
+
+// Left, top, right and bottom, in pixels, as Android's `WindowInsets.Type.systemBars()` reports
+// them — the status bar and the navigation bar, and none of the gesture regions.
+//
+// **They are written on the UI thread and read on SDL's**, and that is deliberate rather than
+// overlooked: four independent `i32` stores are the one shape where a lock buys nothing worth having.
+// The worst a reader can see is one frame laid out against a mix of old and new values, on the frame
+// the phone was turned.
+var left: i32 = 0
+var top: i32 = 0
+var right: i32 = 0
+var bottom: i32 = 0
+
+set(l: i32, t: i32, r: i32, b: i32)
+    left = l
+    top = t
+    right = r
+    bottom = b
+end set
+
+// The four, as one call, so a frame reads them together rather than four statements apart.
+get() -> (i32, i32, i32, i32) = (left, top, right, bottom)
