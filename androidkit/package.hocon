@@ -26,7 +26,7 @@ package {
 // against an NDK and an API level somebody else chose, and a package hashing that into `sysl.sum`
 // would be shipping a build nobody in this org could reproduce.
 dependencies {
-  sdl3     { git = "github.com/sysl-lang/sdl3",     version = "0.3.0" }
+  sdl3     { git = "github.com/sysl-lang/sdl3",     version = "0.3.1" }
   sdl3-ttf { git = "github.com/sysl-lang/sdl3-ttf", version = "0.3.0" }
 }
 

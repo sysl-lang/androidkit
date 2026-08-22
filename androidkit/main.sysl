@@ -16,7 +16,6 @@
 import sh.sysl.sdl3.*
 import sh.sysl.sdl3_ttf.*
 import sh.sysl.sdl3.{INIT_VIDEO, SCANCODE_ESCAPE, WINDOW_RESIZABLE}
-import sh.sysl.sdl3.c.FRect
 import sysl.fs.is_file
 
 // **What the window is asked for, and not what it gets.** Android answers a size request with the
