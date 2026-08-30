@@ -5,12 +5,27 @@ import android.util.Log
 import android.view.{View, WindowInsets}
 import org.libsdl.app.SDLActivity
 
-/** The Java-side half of the program, which exists for two reasons.
+/** The Java-side half of the program.
   *
-  * The first is that the manifest needs a launcher activity in the application's own package, and
-  * `SDLActivity` lives in the AAR — so a subclass has to exist somewhere to have a name.
+  * '''This file used to say a launcher activity has to be a class in the application's own package.
+  * That is false, and it was the only thing making a per-application copy of this class
+  * necessary.''' `android:name` in a manifest takes any class on the classpath — the familiar
+  * `.MainActivity` is only a spelling relative to the package, not a requirement — so the activity
+  * can live in a library and be named in full. Checked on an emulator, where
+  * `com.example.myapp/sh.sysl.skitter.SkitterActivity` launches and runs.
   *
-  * '''The second is the system bars, and it is the only code here.''' `SDL_GetWindowSafeArea`
+  * That matters more than a naming detail, because '''JNI mangles a native method's symbol from the
+  * class's package'''. While every application had its own activity, every application also had its
+  * own hand-written `@export` to match it — and getting the pair out of step links cleanly and dies
+  * at the first call. Fixing the class fixes the symbol, which is what lets the bridge below be a
+  * library's.
+  *
+  * '''So a new project should not copy this file: it should clone
+  * `sysl-lang/skitter-app`''', which names `sh.sysl.skitter.SkitterActivity` and leaves an
+  * application with two lines to edit in `gradle.properties`. This copy stays because androidkit
+  * needs SDL3_ttf, and a second AAR is the one thing the template does not yet carry.
+  *
+  * '''The system bars are the only code here.''' `SDL_GetWindowSafeArea`
   * answers with Android's insets combined — `systemBars`, `systemGestures`,
   * `mandatorySystemGestures`, `tappableElement` and `displayCutout`, all at once — because it
   * answers ''where can a button go''. For a drawing that is far too conservative: on a

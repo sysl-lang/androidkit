@@ -1,8 +1,12 @@
 # androidkit
 
-**A sysl program on Android, and the smallest one that shows anything.** Clone it, write over
-`androidkit/main.sysl`, and you have an app. `sysl build-c` compiles the program to an archive, CMake
-links that into the `.so` the APK carries, and `SDLActivity` loads it.
+**A sysl program on Android, and the smallest one that shows anything.** `sysl build-c` compiles the
+program to an archive, CMake links that into the `.so` the APK carries, and `SDLActivity` loads it.
+
+**To start a project, clone [`sysl-lang/skitter-app`](https://github.com/sysl-lang/skitter-app)
+instead** — two lines of configuration and none of the machinery below. This repository is worth
+reading to find out *how* an Android build is put together, and it is where SDL3_ttf is shown; it is
+no longer the thing to copy. See [below](#if-you-are-starting-a-project-start-at-skitter-app).
 
 It puts one line of text on the screen. Everything else in the repository is the machinery that gets
 it there, and every piece of it is commented with why — most of them are things this program got
@@ -58,12 +62,39 @@ a terminal whose `java` is newer needs `JAVA_HOME=<a jdk 17-25> ./gradlew assemb
 lists the machines a compiler has; if `aarch64-android` is not among them, the build stops at
 `unknown target` and no amount of Android configuration will help.
 
-## Usage is clone-and-edit
+## If you are starting a project, start at `skitter-app`
 
-There is no `sysl new`. Copy the repository, rename the inner `androidkit/` directory and the `name`
-in its `package.hocon`, set `applicationId` and `namespace` in `app/build.gradle.kts`, move
-`MainActivity.scala` to match, and write `androidkit/main.sysl`. picokit set that precedent and this
-follows it.
+**Not here.** Clone [`sysl-lang/skitter-app`](https://github.com/sysl-lang/skitter-app), set two
+lines in `gradle.properties`, and write `program/main.sysl`:
+
+```
+skitter.applicationId=com.example.myapp
+skitter.appName=My App
+```
+
+Nothing else in that project is named for your application — not the archive, not the CMake project,
+not the sbt project, not the manifest.
+
+**This README used to tell you to copy *this* repository** and rename the inner directory, the
+`package.hocon` name, the `applicationId`, the `namespace` and `MainActivity.scala`, keeping the JNI
+symbol in step with the last of those by hand. That advice rested on a claim that turned out to be
+false: **a launcher activity does not have to be a class in the application's own package.**
+`android:name` takes any class on the classpath, and the familiar `.MainActivity` is only a spelling
+relative to the package — checked on an emulator, where
+`com.example.myapp/sh.sysl.skitter.SkitterActivity` launches and runs.
+
+That is the whole hinge, because JNI mangles a native method's symbol from the class's package. Fix
+the class and the symbol stops varying; then the sysl half of the system-bar bridge can live in a
+library, and an application's id becomes a string nothing else has to agree with.
+[`sysl-lang/skitter`](https://github.com/sysl-lang/skitter) is that library, and it is what this
+repository predicted when it said the surface, input and lifecycle layer "gets extracted when a
+second one makes the duplication visible".
+
+**Why this repository still has its own copy of all of it.** androidkit needs a second AAR —
+SDL3_ttf, for real text — and `fetch-sdl3.sh` and `CMakeLists.txt` both grow when there are two.
+Those are exactly the files `skitter-app` asks you to leave alone, so porting this one waits on the
+template learning to carry more than SDL3 itself. Until then, read this repository for *how* the
+pieces fit and clone the other one to actually start.
 
 ## How the two halves are joined
 
