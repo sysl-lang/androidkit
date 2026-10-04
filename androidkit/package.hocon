@@ -12,7 +12,7 @@
 
 package {
   name    = "androidkit"
-  version = "0.1.0"
+  version = "0.1.1"
 }
 
 // **One dependency, and the same one a desktop program would name.** `15 §8` says a link directive
@@ -26,8 +26,8 @@ package {
 // against an NDK and an API level somebody else chose, and a package hashing that into `sysl.sum`
 // would be shipping a build nobody in this org could reproduce.
 dependencies {
-  sdl3     { git = "github.com/sysl-lang/sdl3",     version = "0.3.1" }
-  sdl3-ttf { git = "github.com/sysl-lang/sdl3-ttf", version = "0.3.0" }
+  sdl3     { git = "github.com/sysl-lang/sdl3",     version = "0.3.5" }
+  sdl3-ttf { git = "github.com/sysl-lang/sdl3-ttf", version = "0.3.1" }
 }
 
 // `heap` and `posix` are what `sh.sysl.sdl3` itself requires, and a program reaching a gated module
