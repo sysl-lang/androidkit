@@ -3,6 +3,8 @@
 **A sysl program on Android, and the smallest one that shows anything.** `sysl build-c` compiles the
 program to an archive, CMake links that into the `.so` the APK carries, and `SDLActivity` loads it.
 
+*An independent sysl package for Android. It is not affiliated with or endorsed by Google.*
+
 **To start a project, clone [`sysl-lang/skitter-app`](https://github.com/sysl-lang/skitter-app)
 instead** — two lines of configuration and none of the machinery below. This repository is worth
 reading to find out *how* an Android build is put together, and it is where SDL3_ttf is shown; it is
