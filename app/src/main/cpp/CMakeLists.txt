@@ -72,6 +72,13 @@ get_filename_component(SDL3_TTF_LIB_DIR ${SDL3_TTF_SO} DIRECTORY)
 # CMake links with another's. Handing sysl the NDK CMake is already using makes them the same by
 # construction, and `${ANDROID_NDK}` is set by the toolchain file, so nothing here has to name a
 # version or a path.
+# The manifest is `sysl.hocon`; a project generated before sysl 0.6.0 still has `package.hocon`.
+if(EXISTS ${SYSL_PROGRAM}/sysl.hocon)
+    set(SYSL_MANIFEST ${SYSL_PROGRAM}/sysl.hocon)
+else()
+    set(SYSL_MANIFEST ${SYSL_PROGRAM}/package.hocon)
+endif()
+
 add_custom_command(
     OUTPUT ${SYSL_ARCHIVE}
     COMMAND ${CMAKE_COMMAND} -E env ANDROID_NDK_ROOT=${ANDROID_NDK}
@@ -82,7 +89,7 @@ add_custom_command(
             --link-path ${SDL3_LIB_DIR}
             --link-path ${SDL3_TTF_LIB_DIR}
             -o ${SYSL_ARCHIVE}
-    DEPENDS ${SYSL_PROGRAM}/main.sysl ${SYSL_PROGRAM}/package.hocon
+    DEPENDS ${SYSL_PROGRAM}/main.sysl ${SYSL_MANIFEST}
     COMMENT "Compiling androidkit for ${SYSL_TARGET}"
     VERBATIM)
 

@@ -78,7 +78,7 @@ Nothing else in that project is named for your application — not the archive, 
 not the sbt project, not the manifest.
 
 **This README used to tell you to copy *this* repository** and rename the inner directory, the
-`package.hocon` name, the `applicationId`, the `namespace` and `MainActivity.scala`, keeping the JNI
+`sysl.hocon` name, the `applicationId`, the `namespace` and `MainActivity.scala`, keeping the JNI
 symbol in step with the last of those by hand. That advice rested on a claim that turned out to be
 false: **a launcher activity does not have to be a class in the application's own package.**
 `android:name` takes any class on the classpath, and the familiar `.MainActivity` is only a spelling
