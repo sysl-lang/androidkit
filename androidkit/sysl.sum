@@ -1,2 +1,5 @@
+github.com/sysl-lang/png v0.2.4 sha256:5cc0bad5b1aebba8e4a2c6a6a3523d9262843e21d45672a426826406ca1cb63b
 github.com/sysl-lang/sdl3 v0.3.11 sha256:ddfec9152616d354a488ad9c34fddcc9058b14e1fdbf40f4a5fab1a7214bb170
+github.com/sysl-lang/sdl3 v0.3.25 sha256:a3b370f7b3919c82fbe71e69a9bd848a308c82c45c23cef9bdfe963d775f2405
 github.com/sysl-lang/sdl3-ttf v0.3.3 sha256:358bffd08d285565cbeda17d1e1b3221f33864388c17ef1f83b1308b7eade72a
+github.com/sysl-lang/sdl3-ttf v0.3.4 sha256:2cfcf9ff0451d8262b72bb31a6e678342a0ada6b7064e55cd35961bfdd8ee9c4
