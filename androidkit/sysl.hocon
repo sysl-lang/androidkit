@@ -12,9 +12,9 @@
 
 package {
   name    = "androidkit"
-  version = "0.1.6"
+  version = "0.1.7"
 
-  sysl = "0.10.0"
+  sysl = "0.13.0"
 }
 
 // **One dependency, and the same one a desktop program would name.** `15 §8` says a link directive
